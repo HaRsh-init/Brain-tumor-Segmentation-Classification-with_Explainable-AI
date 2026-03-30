@@ -232,9 +232,11 @@ def get_callbacks(model_name, models_dir='../models', patience=5):
 class scSEAttentionBlock(tf.keras.layers.Layer):
     """
     Concurrent Spatial and Channel Squeeze & Excitation (scSE) block.
-    Used by segmentation_models library for attention mechanisms.
+    Updated to handle specific serialization parameters.
     """
-    def __init__(self, **kwargs):
+    def __init__(self, reduction_ratio=16, kernel_size=7, **kwargs):
+        self.reduction_ratio = reduction_ratio
+        self.kernel_size = kernel_size
         super(scSEAttentionBlock, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -246,7 +248,8 @@ class scSEAttentionBlock(tf.keras.layers.Layer):
         self.c_se = tf.keras.layers.Dense(self.channels, activation='sigmoid')
         
         # Spatial-Squeeze-and-Excitation
-        self.s_se = tf.keras.layers.Conv2D(1, (1, 1), activation='sigmoid', padding='same')
+        # Some versions use 1x1, others use kernel_size from config
+        self.s_se = tf.keras.layers.Conv2D(1, (self.kernel_size, self.kernel_size), activation='sigmoid', padding='same')
         
         super(scSEAttentionBlock, self).build(input_shape)
 
@@ -266,6 +269,10 @@ class scSEAttentionBlock(tf.keras.layers.Layer):
 
     def get_config(self):
         config = super(scSEAttentionBlock, self).get_config()
+        config.update({
+            "reduction_ratio": self.reduction_ratio,
+            "kernel_size": self.kernel_size,
+        })
         return config
 
 
