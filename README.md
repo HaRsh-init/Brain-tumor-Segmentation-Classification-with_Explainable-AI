@@ -4,6 +4,15 @@
 
 ---
 
+## 📚 Deep Dive Documentation
+I have created 4 detailed guides to help you understand every part of this project:
+- **[Part 1: Data Processing & Preparation](docs/01_data_processing.md)**
+- **[Part 2: Multi-Model Classification](docs/02_classification.md)**
+- **[Part 3: Segmentation & AI Explainability](docs/03_segmentation_and_explainability.md)**
+- **[Part 4: Web Integration (Backend & Frontend)](docs/04_web_integration.md)**
+
+---
+
 ## 📊 Dataset
 
 **Merged Multi-Source Dataset (~15,000+ images)** created by combining 3 Kaggle datasets:

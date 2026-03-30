@@ -229,50 +229,53 @@ def get_callbacks(model_name, models_dir='../models', patience=5):
 # ─────────────────────────────────────────────
 # Custom Layers for Segmentation Support
 # ─────────────────────────────────────────────
+
 class scSEAttentionBlock(tf.keras.layers.Layer):
-    """
-    Concurrent Spatial and Channel Squeeze & Excitation (scSE) block.
-    Matches the 5-weight signature (4 SE weights, 1 Spatial weight) from sm library.
-    """
     def __init__(self, reduction_ratio=16, kernel_size=7, **kwargs):
         self.reduction_ratio = reduction_ratio
         self.kernel_size = kernel_size
         super(scSEAttentionBlock, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        c_axis = 3 if tf.keras.backend.image_data_format() == 'channels_last' else 1
-        channels = input_shape[c_axis]
-        
-        # Channel-Squeeze-and-Excitation (2 Dense layers = 4 weights)
-        self.se_dense_1 = tf.keras.layers.Dense(max(1, channels // self.reduction_ratio), activation='relu')
+        channels = int(input_shape[-1])
+        reduced = max(1, channels // self.reduction_ratio)
+
+        self.se_dense_1 = tf.keras.layers.Dense(reduced, activation='relu')
         self.se_dense_2 = tf.keras.layers.Dense(channels, activation='sigmoid')
-        
-        # Spatial-Squeeze-and-Excitation (1 Conv layer, no bias = 1 weight)
-        self.s_se = tf.keras.layers.Conv2D(1, (self.kernel_size, self.kernel_size), 
-                                         activation='sigmoid', padding='same', use_bias=False)
-        
+
+        # FIX: saved model's spatial conv had 2 input channels
+        # meaning it was applied to a 2-channel tensor (avg + max pool concat)
+        self.s_se_conv = tf.keras.layers.Conv2D(
+            filters=1,
+            kernel_size=(self.kernel_size, self.kernel_size),
+            activation='sigmoid',
+            padding='same',
+            use_bias=False
+        )
         super(scSEAttentionBlock, self).build(input_shape)
 
     def call(self, x):
         # Channel SE path
-        avg_pool = tf.keras.layers.GlobalAveragePooling2D()(x)
+        avg_pool = tf.reduce_mean(x, axis=[1, 2])
         c = self.se_dense_1(avg_pool)
         c = self.se_dense_2(c)
-        c = tf.keras.layers.Reshape((1, 1, -1))(c)
-        x_c = tf.keras.layers.Multiply()([x, c])
-        
-        # Spatial SE path
-        s = self.s_se(x)
-        x_s = tf.keras.layers.Multiply()([x, s])
-        
-        # Combine (Concurrent SE)
-        return tf.keras.layers.Add()([x_c, x_s])
+        c = tf.reshape(c, [-1, 1, 1, tf.shape(c)[-1]])
+        x_c = x * c
+
+        # Spatial SE path — FIX: use avg+max concat (2 channels) before conv
+        avg_spatial = tf.reduce_mean(x, axis=-1, keepdims=True)  # (B,H,W,1)
+        max_spatial = tf.reduce_max(x, axis=-1, keepdims=True)   # (B,H,W,1)
+        spatial_concat = tf.concat([avg_spatial, max_spatial], axis=-1)  # (B,H,W,2)
+        s = self.s_se_conv(spatial_concat)  # now kernel is (7,7,2,1) ✓
+        x_s = x * s
+
+        return x_c + x_s
 
     def get_config(self):
         config = super(scSEAttentionBlock, self).get_config()
         config.update({
-            "reduction_ratio": self.reduction_ratio,
-            "kernel_size": self.kernel_size,
+            'reduction_ratio': self.reduction_ratio,
+            'kernel_size': self.kernel_size,
         })
         return config
 

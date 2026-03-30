@@ -193,9 +193,9 @@ def predict():
 
             result['classification'] = {
                 'class': CLASS_NAMES[pred_class],
-                'confidence': round(confidence * 100, 1),
+                'confidence': float(round(confidence * 100, 1)),
                 'probabilities': {
-                    CLASS_NAMES[i]: round(float(predictions[0][i]) * 100, 1)
+                    CLASS_NAMES[i]: float(round(predictions[0][i] * 100, 1))
                     for i in range(len(CLASS_NAMES))
                 },
                 'description': CLASS_DESCRIPTIONS[CLASS_NAMES[pred_class]],
@@ -242,7 +242,7 @@ def predict():
                     (seg_mask * 255).astype(np.uint8)
                 ),
                 'overlay': image_to_base64(overlay_seg),
-                'tumor_area_percent': round(tumor_area, 1),
+                'tumor_area_percent': float(round(tumor_area, 1)),
             }
 
         return jsonify(result)
