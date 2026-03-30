@@ -232,7 +232,7 @@ def get_callbacks(model_name, models_dir='../models', patience=5):
 class scSEAttentionBlock(tf.keras.layers.Layer):
     """
     Concurrent Spatial and Channel Squeeze & Excitation (scSE) block.
-    Updated to handle specific serialization parameters.
+    Matches the 5-weight signature (4 SE weights, 1 Spatial weight) from sm library.
     """
     def __init__(self, reduction_ratio=16, kernel_size=7, **kwargs):
         self.reduction_ratio = reduction_ratio
@@ -240,32 +240,33 @@ class scSEAttentionBlock(tf.keras.layers.Layer):
         super(scSEAttentionBlock, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        self.c_axis = 3 if tf.keras.backend.image_data_format() == 'channels_last' else 1
-        self.channels = input_shape[self.c_axis]
+        c_axis = 3 if tf.keras.backend.image_data_format() == 'channels_last' else 1
+        channels = input_shape[c_axis]
         
-        # Channel-Squeeze-and-Excitation
-        self.avg_pool = tf.keras.layers.GlobalAveragePooling2D()
-        self.c_se = tf.keras.layers.Dense(self.channels, activation='sigmoid')
+        # Channel-Squeeze-and-Excitation (2 Dense layers = 4 weights)
+        self.se_dense_1 = tf.keras.layers.Dense(max(1, channels // self.reduction_ratio), activation='relu')
+        self.se_dense_2 = tf.keras.layers.Dense(channels, activation='sigmoid')
         
-        # Spatial-Squeeze-and-Excitation
-        # Some versions use 1x1, others use kernel_size from config
-        self.s_se = tf.keras.layers.Conv2D(1, (self.kernel_size, self.kernel_size), activation='sigmoid', padding='same')
+        # Spatial-Squeeze-and-Excitation (1 Conv layer, no bias = 1 weight)
+        self.s_se = tf.keras.layers.Conv2D(1, (self.kernel_size, self.kernel_size), 
+                                         activation='sigmoid', padding='same', use_bias=False)
         
         super(scSEAttentionBlock, self).build(input_shape)
 
     def call(self, x):
-        # Channel SE
-        c = self.avg_pool(x)
-        c = self.c_se(c)
-        c = tf.keras.layers.Reshape((1, 1, self.channels))(c)
-        c = tf.keras.layers.Multiply()([x, c])
+        # Channel SE path
+        avg_pool = tf.keras.layers.GlobalAveragePooling2D()(x)
+        c = self.se_dense_1(avg_pool)
+        c = self.se_dense_2(c)
+        c = tf.keras.layers.Reshape((1, 1, -1))(c)
+        x_c = tf.keras.layers.Multiply()([x, c])
         
-        # Spatial SE
+        # Spatial SE path
         s = self.s_se(x)
-        s = tf.keras.layers.Multiply()([x, s])
+        x_s = tf.keras.layers.Multiply()([x, s])
         
-        # Combine
-        return tf.keras.layers.Add()([c, s])
+        # Combine (Concurrent SE)
+        return tf.keras.layers.Add()([x_c, x_s])
 
     def get_config(self):
         config = super(scSEAttentionBlock, self).get_config()
