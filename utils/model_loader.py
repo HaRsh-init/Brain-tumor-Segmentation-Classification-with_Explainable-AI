@@ -226,9 +226,69 @@ def get_callbacks(model_name, models_dir='../models', patience=5):
     ]
 
 
-def load_trained_model(model_path):
-    """Load a trained model from .h5 file."""
-    return tf.keras.models.load_model(model_path)
+# ─────────────────────────────────────────────
+# Custom Layers for Segmentation Support
+# ─────────────────────────────────────────────
+class scSEAttentionBlock(tf.keras.layers.Layer):
+    """
+    Concurrent Spatial and Channel Squeeze & Excitation (scSE) block.
+    Used by segmentation_models library for attention mechanisms.
+    """
+    def __init__(self, **kwargs):
+        super(scSEAttentionBlock, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.c_axis = 3 if tf.keras.backend.image_data_format() == 'channels_last' else 1
+        self.channels = input_shape[self.c_axis]
+        
+        # Channel-Squeeze-and-Excitation
+        self.avg_pool = tf.keras.layers.GlobalAveragePooling2D()
+        self.c_se = tf.keras.layers.Dense(self.channels, activation='sigmoid')
+        
+        # Spatial-Squeeze-and-Excitation
+        self.s_se = tf.keras.layers.Conv2D(1, (1, 1), activation='sigmoid', padding='same')
+        
+        super(scSEAttentionBlock, self).build(input_shape)
+
+    def call(self, x):
+        # Channel SE
+        c = self.avg_pool(x)
+        c = self.c_se(c)
+        c = tf.keras.layers.Reshape((1, 1, self.channels))(c)
+        c = tf.keras.layers.Multiply()([x, c])
+        
+        # Spatial SE
+        s = self.s_se(x)
+        s = tf.keras.layers.Multiply()([x, s])
+        
+        # Combine
+        return tf.keras.layers.Add()([c, s])
+
+    def get_config(self):
+        config = super(scSEAttentionBlock, self).get_config()
+        return config
+
+
+def load_trained_model(model_path, custom_objects=None):
+    """
+    Load a trained model from .h5 file with flexible custom object handling.
+    """
+    if custom_objects is None:
+        custom_objects = {
+            'dice_coefficient': dice_coefficient,
+            'dice_loss': dice_loss,
+            'iou_metric': iou_metric,
+            'iou_score': iou_metric,
+            'f-score': dice_coefficient,
+            'dice_loss_plus_binary_focal_loss': dice_loss,
+            'scSEAttentionBlock': scSEAttentionBlock # Critical for Attention U-Net
+        }
+
+    return tf.keras.models.load_model(
+        model_path, 
+        custom_objects=custom_objects,
+        compile=False # Inference mode
+    )
 
 
 # ─────────────────────────────────────────────

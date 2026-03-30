@@ -4,6 +4,11 @@ Upload an MRI image → Get classification, segmentation, and GradCAM results.
 """
 
 import os
+# Silence TensorFlow logs for a cleaner terminal presentation
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['AUTOGRAPH_VERBOSITY'] = '0'
+
 import sys
 import numpy as np
 from PIL import Image
@@ -72,21 +77,13 @@ def load_models():
         print("[WARN] No classification model found. Run training notebooks first.")
 
     # Try to load segmentation model (Attention U-Net preferred, fallback to U-Net)
-    from utils.model_loader import dice_coefficient, dice_loss, iou_metric
+    from utils.model_loader import load_trained_model
     seg_candidates = ['attention_unet_best.h5', 'unet_best.h5']
     for seg_file in seg_candidates:
         seg_path = os.path.join(MODEL_DIR, seg_file)
         if os.path.exists(seg_path):
             try:
-                segmentation_model = tf.keras.models.load_model(
-                    seg_path,
-                    custom_objects={
-                        'dice_loss': dice_loss,
-                        'dice_coefficient': dice_coefficient,
-                        'iou_metric': iou_metric,
-                        'total_loss': dice_loss,  # fallback for custom combined loss
-                    }
-                )
+                segmentation_model = load_trained_model(seg_path)
                 print(f"[OK] Segmentation model loaded: {seg_file}")
                 break
             except Exception as e:
