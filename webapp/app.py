@@ -225,16 +225,14 @@ def predict():
         if segmentation_model is not None:
             seg_size = segmentation_model.input_shape[1]
             img_seg = img.resize((seg_size, seg_size))
-            img_seg_array = np.array(img_seg, dtype=np.float32)
-            # Attention U-Net with EfficientNetB3 expects 0-255 range
-            # (EfficientNet normalizes internally)
+            img_seg_array = np.array(img_seg) / 255.0
             img_seg_batch = np.expand_dims(img_seg_array, axis=0)
 
             seg_pred = segmentation_model.predict(img_seg_batch, verbose=0)
             seg_mask = (seg_pred[0].squeeze() > 0.5).astype(np.float32)
 
-            # Create colored mask overlay (use 0-1 for display)
-            overlay_seg = (img_seg_array / 255.0).copy()
+            # Create colored mask overlay
+            overlay_seg = img_seg_array.copy()
             mask_colored = np.zeros_like(overlay_seg)
             mask_colored[:, :, 0] = seg_mask  # Red channel
             overlay_seg = overlay_seg * 0.7 + mask_colored * 0.3
