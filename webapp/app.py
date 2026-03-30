@@ -202,48 +202,50 @@ def predict():
                 'severity': CLASS_SEVERITY[CLASS_NAMES[pred_class]],
             }
 
-            # GradCAM
-            try:
-                from utils.gradcam import make_gradcam_heatmap, overlay_heatmap
-                heatmap = make_gradcam_heatmap(img_cls_batch, classification_model)
-                overlay = overlay_heatmap(img_cls_array, heatmap, alpha=0.55) # increased alpha for stronger popup
-                result['gradcam'] = {
-                    'heatmap': image_to_base64(
-                        (plt_colormap(heatmap, img_cls_array, size=img_cls_array.shape[1]) * 255).astype(np.uint8)
+            # Only show GradCAM and Segmentation if a tumor is detected
+            if CLASS_NAMES[pred_class] != 'No Tumor':
+                # GradCAM
+                try:
+                    from utils.gradcam import make_gradcam_heatmap, overlay_heatmap
+                    heatmap = make_gradcam_heatmap(img_cls_batch, classification_model)
+                    overlay = overlay_heatmap(img_cls_array, heatmap, alpha=0.55) # increased alpha for stronger popup
+                    result['gradcam'] = {
+                        'heatmap': image_to_base64(
+                            (plt_colormap(heatmap, img_cls_array, size=img_cls_array.shape[1]) * 255).astype(np.uint8)
+                        ),
+                        'overlay': image_to_base64(overlay),
+                    }
+                except Exception as e:
+                    import traceback
+                    print(f"GradCAM error: {e}")
+                    traceback.print_exc()
+
+            # Segmentation (only if tumor detected)
+            if segmentation_model is not None and CLASS_NAMES[pred_class] != 'No Tumor':
+                seg_size = segmentation_model.input_shape[1]
+                img_seg = img.resize((seg_size, seg_size))
+                img_seg_array = np.array(img_seg) / 255.0
+                img_seg_batch = np.expand_dims(img_seg_array, axis=0)
+
+                seg_pred = segmentation_model.predict(img_seg_batch, verbose=0)
+                seg_mask = (seg_pred[0].squeeze() > 0.5).astype(np.float32)
+
+                # Create colored mask overlay
+                overlay_seg = img_seg_array.copy()
+                mask_colored = np.zeros_like(overlay_seg)
+                mask_colored[:, :, 0] = seg_mask  # Red channel
+                overlay_seg = overlay_seg * 0.7 + mask_colored * 0.3
+
+                # Calculate tumor area percentage
+                tumor_area = (seg_mask.sum() / seg_mask.size) * 100
+
+                result['segmentation'] = {
+                    'mask': image_to_base64(
+                        (seg_mask * 255).astype(np.uint8)
                     ),
-                    'overlay': image_to_base64(overlay),
+                    'overlay': image_to_base64(overlay_seg),
+                    'tumor_area_percent': float(round(tumor_area, 1)),
                 }
-            except Exception as e:
-                import traceback
-                print(f"GradCAM error: {e}")
-                traceback.print_exc()
-
-        # Segmentation
-        if segmentation_model is not None:
-            seg_size = segmentation_model.input_shape[1]
-            img_seg = img.resize((seg_size, seg_size))
-            img_seg_array = np.array(img_seg) / 255.0
-            img_seg_batch = np.expand_dims(img_seg_array, axis=0)
-
-            seg_pred = segmentation_model.predict(img_seg_batch, verbose=0)
-            seg_mask = (seg_pred[0].squeeze() > 0.5).astype(np.float32)
-
-            # Create colored mask overlay
-            overlay_seg = img_seg_array.copy()
-            mask_colored = np.zeros_like(overlay_seg)
-            mask_colored[:, :, 0] = seg_mask  # Red channel
-            overlay_seg = overlay_seg * 0.7 + mask_colored * 0.3
-
-            # Calculate tumor area percentage
-            tumor_area = (seg_mask.sum() / seg_mask.size) * 100
-
-            result['segmentation'] = {
-                'mask': image_to_base64(
-                    (seg_mask * 255).astype(np.uint8)
-                ),
-                'overlay': image_to_base64(overlay_seg),
-                'tumor_area_percent': float(round(tumor_area, 1)),
-            }
 
         return jsonify(result)
 

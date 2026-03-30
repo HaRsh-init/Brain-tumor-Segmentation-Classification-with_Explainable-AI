@@ -10,6 +10,7 @@ I have created 4 detailed guides to help you understand every part of this proje
 - **[Part 2: Multi-Model Classification](docs/02_classification.md)**
 - **[Part 3: Segmentation & AI Explainability](docs/03_segmentation_and_explainability.md)**
 - **[Part 4: Web Integration (Backend & Frontend)](docs/04_web_integration.md)**
+- **[Part 5: In-Depth EDA & Advanced Processing](docs/05_eda_and_advanced_processing.md)**
 
 ---
 
